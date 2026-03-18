@@ -1,20 +1,62 @@
 /**
+ * Recursively unescapes a value, handling double or triple encoded JSON strings.
+ * Up to 3 levels of nesting are supported.
+ */
+function recursiveUnescape(data: any, depth: number = 3): any {
+  let current = data;
+  for (let i = 0; i < depth; i++) {
+    if (typeof current !== 'string') {
+      return current;
+    }
+    try {
+      const parsed = JSON.parse(current);
+      // If the result is a string, it might be further encoded.
+      if (typeof parsed === 'string') {
+        current = parsed;
+        continue;
+      }
+      // If it's an object or array, we've successfully decoded it.
+      return parsed;
+    } catch (e) {
+      // Try unescaping by wrapping in quotes, similar to the Go implementation.
+      // This can handle strings that have raw escape sequences.
+      try {
+        const unescaped = JSON.parse('"' + current + '"');
+        if (typeof unescaped === 'string' && unescaped !== current) {
+          current = unescaped;
+          continue;
+        }
+      } catch (e2) {
+        // Ignore unescape failure
+      }
+      // Not valid JSON or couldn't unescape, return what we have
+      return current;
+    }
+  }
+  return current;
+}
+
+const XSSI_PREFIXES = [")]}'\n\n", ")]}'\n", ")]}''"];
+
+/**
  * Decodes a batchexecute response.
- * The format typically starts with an XSSI protection prefix: )]}'
+ * The format typically starts with an XSSI protection prefix.
  * Followed by one or more length-prefixed JSON chunks: [length]\n[JSON]\n
  */
 export function decodeResponse(response: string): { rpcId: string; payload: any; index: string }[] {
   let content = response;
   
-  // Step 2: Strip XSSI prefix
-  const xssiPrefix = ")]}'\n";
-  if (content.startsWith(xssiPrefix)) {
-    content = content.substring(xssiPrefix.length);
+  // Step 1: Strip XSSI prefix
+  for (const prefix of XSSI_PREFIXES) {
+    if (content.startsWith(prefix)) {
+      content = content.substring(prefix.length);
+      break;
+    }
   }
 
   const results: { rpcId: string; payload: any; index: string }[] = [];
 
-  // Step 3: Parse length-prefixed chunks
+  // Step 2: Parse length-prefixed chunks
   let offset = 0;
   while (offset < content.length) {
     const nextNewline = content.indexOf('\n', offset);
@@ -42,7 +84,7 @@ export function decodeResponse(response: string): { rpcId: string; payload: any;
     
     try {
       const chunk = JSON.parse(chunkStr);
-      // Step 4: Extract wrb.fr envelopes
+      // Step 3: Extract wrb.fr envelopes
       extractWrbEnvelopes(chunk, results);
     } catch (e) {
       // Ignore individual chunk parsing errors
@@ -70,16 +112,19 @@ export class StreamingDecoder {
 
     // Step 1: Strip XSSI prefix if present at the very beginning
     if (!this.hasStrippedXssi) {
-      const xssiPrefix = ")]}'\n";
-      if (this.buffer.startsWith(xssiPrefix)) {
-        this.buffer = this.buffer.substring(xssiPrefix.length);
-        this.hasStrippedXssi = true;
-      } else if (this.buffer.length >= xssiPrefix.length) {
-        // We have enough data to know it's not the XSSI prefix, or we already passed it
+      const match = XSSI_PREFIXES.find(p => this.buffer.startsWith(p));
+      if (match) {
+        this.buffer = this.buffer.substring(match.length);
         this.hasStrippedXssi = true;
       } else {
-        // Not enough data yet to decide on XSSI prefix
-        return [];
+        // Check if the buffer could still be an XSSI prefix
+        const couldBePrefix = XSSI_PREFIXES.some(p => p.startsWith(this.buffer));
+        if (!couldBePrefix) {
+          this.hasStrippedXssi = true;
+        } else {
+          // Wait for more data
+          return [];
+        }
       }
     }
 
@@ -99,8 +144,6 @@ export class StreamingDecoder {
       const length = parseInt(lengthStr, 10);
       if (isNaN(length)) {
         // If we can't parse a length, we might be in a bad state. 
-        // For robustness, we'll just stop here, but in a real streaming scenario 
-        // we might want to discard until the next newline or something similar.
         break;
       }
 
@@ -135,15 +178,16 @@ function extractWrbEnvelopes(data: any, results: { rpcId: string; payload: any; 
 
   if (data[0] === 'wrb.fr') {
     const rpcId = data[1];
-    const payloadStr = data[2];
+    // Check positions 2, 5, and 10 for the raw payload
+    const rawPayload = data[2] ?? data[5] ?? data[10];
     const index = data[6];
     
-    if (typeof rpcId === 'string' && typeof payloadStr === 'string' && typeof index === 'string') {
+    if (typeof rpcId === 'string' && typeof index === 'string' && rawPayload !== undefined && rawPayload !== null) {
       try {
-        const payload = JSON.parse(payloadStr);
+        const payload = recursiveUnescape(rawPayload);
         results.push({ rpcId, payload, index });
       } catch (e) {
-        // Failed to parse double-encoded payload
+        // Failed to parse payload
       }
     }
     return;
