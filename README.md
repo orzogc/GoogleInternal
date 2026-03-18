@@ -1,5 +1,8 @@
 # GoogleInternal
 
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)
+
 A Node.js/TypeScript library designed to simplify interaction with Google's internal `batchexecute` RPC protocol. It handles complex authentication (SAPISIDHASH), declarative spec mapping, and batching.
 
 ## Features
