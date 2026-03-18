@@ -95,4 +95,84 @@ export class BatchBuilder {
 
     return finalResults;
   }
+
+  async *stream(): AsyncIterable<any> {
+    if (this.items.length === 0) return;
+
+    const calls: { rpcId: string; args: any[] }[] = [];
+    const specs: Spec[] = [];
+    
+    let baseConfig: ServiceConfig | undefined;
+
+    for (const item of this.items) {
+      const service = this.client.service(item.serviceName);
+      if (!baseConfig) baseConfig = service.config;
+      
+      const spec = service.getSpec(item.specName);
+      if (!spec) throw new Error(`Spec not found: ${item.serviceName}.${item.specName}`);
+      
+      if (spec.schema) {
+        spec.schema.parse(item.data);
+      }
+
+      specs.push(spec);
+      calls.push({ rpcId: spec.rpcId, args: spec.mapArgs(item.data) });
+    }
+
+    if (!baseConfig) throw new Error("No service config available");
+
+    const body = Transport.encodeBatch(calls);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+    };
+
+    if (baseConfig.cookies && baseConfig.origin) {
+      const cookies = AuthModule.parseCookies(baseConfig.cookies, ['SAPISID']);
+      if (cookies.SAPISID) {
+        headers['Authorization'] = `SAPISIDHASH ${AuthModule.generateSapisidHash(cookies.SAPISID, baseConfig.origin)}`;
+      }
+      headers['Cookie'] = baseConfig.cookies;
+    }
+
+    const params = new URLSearchParams();
+    params.append('f.req', body);
+    if (baseConfig.at) {
+      params.append('at', baseConfig.at);
+    }
+
+    const url = new URL(baseConfig.baseUrl);
+    if (baseConfig.hl) url.searchParams.append('hl', baseConfig.hl);
+    if (baseConfig.bl) url.searchParams.append('bl', baseConfig.bl);
+    if (baseConfig.f_sid) url.searchParams.append('f.sid', baseConfig.f_sid);
+
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers,
+      body: params.toString(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    if (!response.body) {
+      throw new Error("Response body is not readable");
+    }
+
+    const decoder = new Transport.StreamingDecoder();
+
+    // Use TextDecoderStream to convert Uint8Array chunks to strings
+    // response.body is a ReadableStream<Uint8Array>
+    // @ts-ignore - ReadableStream is async iterable in Node 18+
+    for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
+      const results = decoder.decodeChunk(chunk);
+      for (const result of results) {
+        const callIndex = parseInt(result.index, 10) - 1;
+        if (callIndex >= 0 && callIndex < this.items.length) {
+          const spec = specs[callIndex];
+          yield spec.mapResult(result.payload);
+        }
+      }
+    }
+  }
 }
