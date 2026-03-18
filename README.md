@@ -10,12 +10,6 @@ A Node.js/TypeScript library designed to simplify interaction with Google's inte
 - **Batching:** Send multiple RPCs across different services in a single POST request.
 - **Streaming:** Support for length-prefixed streaming responses.
 
-## Installation
-
-```bash
-npm install google-internal
-```
-
 ## Usage
 
 ### 1. Initialize the Client
@@ -23,7 +17,7 @@ npm install google-internal
 The client holds global configuration like cookies and the request origin, which are used to generate the required `SAPISIDHASH` headers.
 
 ```typescript
-import { GoogleInternal } from 'google-internal';
+import { GoogleInternal } from './src';
 
 const client = new GoogleInternal({
   cookies: 'SAPISID=...; HSID=...; SID=...;',
