@@ -4,6 +4,8 @@ export interface ServiceConfig {
   bl?: string;
   f_sid?: string;
   at?: string;
+  cookies?: string;
+  origin?: string;
 }
 
 export interface Spec {
