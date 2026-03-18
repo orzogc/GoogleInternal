@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 export interface ServiceConfig {
   baseUrl: string;
   hl?: string;
@@ -8,8 +10,9 @@ export interface ServiceConfig {
   origin?: string;
 }
 
-export interface Spec {
+export interface Spec<TSchema extends z.ZodTypeAny = any, TResult = any> {
   rpcId: string;
-  mapArgs: (data: any) => any[];
-  mapResult: (arr: any[]) => any;
+  schema?: TSchema;
+  mapArgs: (data: z.infer<TSchema>) => any[];
+  mapResult: (arr: any[]) => TResult;
 }

@@ -1,27 +1,29 @@
+import { z } from 'zod';
 import { ServiceConfig, Spec } from '../types';
 import * as AuthModule from '../auth';
 import * as Transport from '../transport';
 
 export class Service {
-  private specs: Map<string, Spec> = new Map();
+  private specs: Map<string, Spec<any, any>> = new Map();
 
   constructor(public config: ServiceConfig) {}
 
-  register(name: string, spec: Spec) {
+  register<TSchema extends z.ZodTypeAny, TResult>(name: string, spec: Spec<TSchema, TResult>) {
     this.specs.set(name, spec);
   }
 
-  getSpec(name: string): Spec | undefined {
+  getSpec(name: string): Spec<any, any> | undefined {
     return this.specs.get(name);
   }
 
-  async execute(name: string, data: any) {
+  async execute<TResult = any>(name: string, data: any): Promise<TResult> {
     const spec = this.specs.get(name);
     if (!spec) {
       throw new Error(`Spec not found: ${name}`);
     }
 
-    const args = spec.mapArgs(data);
+    const validatedData = spec.schema ? spec.schema.parse(data) : data;
+    const args = spec.mapArgs(validatedData);
     const body = Transport.encodeBatch([{ rpcId: spec.rpcId, args }]);
 
     const headers: Record<string, string> = {

@@ -14,12 +14,12 @@ export class GoogleInternal {
     return service;
   }
 
-  service(name: string): Service {
+  service<TService extends Service = Service>(name: string): TService {
     const service = this.services.get(name);
     if (!service) {
       throw new Error(`Service not found: ${name}`);
     }
-    return service;
+    return service as TService;
   }
 
   newBatch(): BatchBuilder {
