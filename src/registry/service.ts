@@ -76,7 +76,12 @@ export class Service {
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      ...this.config.headers, // User custom headers (e.g. x-goog-ext-)
     };
+
+    if (this.config.responseEncoding) {
+      headers[QUERY_PARAMS.UPLOAD_PROTOCOL[0].replace('$', 'x-').replace('upload_', 'response-')] = this.config.responseEncoding;
+    }
 
     if (this.config.cookies && this.config.origin) {
       const cookies = AuthModule.parseCookies(this.config.cookies, ['SAPISID']);
@@ -105,7 +110,17 @@ export class Service {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const responseText = await response.text();
+    let responseText = await response.text();
+
+    // Handle Base64-wrapped responses
+    if (this.config.responseEncoding === 'base64') {
+       try {
+          responseText = Buffer.from(responseText, 'base64').toString('utf-8');
+       } catch (e) {
+          // Fallback to raw if not valid base64
+       }
+    }
+
     const allResults = Transport.decodeResponse(responseText);
     const result = allResults.find(r => r.rpcId === spec.rpcId);
 
@@ -166,7 +181,7 @@ export class Service {
     const stream = (response.body as any).pipeThrough(new TextDecoderStream());
 
     for await (const chunk of stream) {
-      const results = decoder.decodeChunk(chunk);
+      const results = decoder.decodeChunk(chunk, this.config.responseEncoding);
       for (const result of results) {
         if (result.rpcId === spec.rpcId) {
           const mappedResult = spec.mapResult(result.payload);

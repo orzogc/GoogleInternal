@@ -107,8 +107,16 @@ export class StreamingDecoder {
   /**
    * Processes a chunk of data from the stream and returns any fully parsed envelopes.
    */
-  decodeChunk(data: string): { rpcId: string; payload: any; index: string }[] {
-    this.buffer += data;
+  decodeChunk(data: string, encoding?: string): { rpcId: string; payload: any; index: string }[] {
+    let chunkData = data;
+    if (encoding === 'base64') {
+      try {
+        chunkData = Buffer.from(data, 'base64').toString('utf-8');
+      } catch (e) {
+        // Fallback
+      }
+    }
+    this.buffer += chunkData;
 
     // Step 1: Strip XSSI prefix if present at the very beginning
     if (!this.hasStrippedXssi) {

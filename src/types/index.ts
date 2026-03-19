@@ -23,6 +23,10 @@ export interface ServiceConfig {
   prettyPrint?: boolean; // Request formatted JSON
   errorFormat?: string;  // e.g. $.xgafv
   alt?: string;          // Output format
+  
+  // Advanced Headers
+  headers?: Record<string, string>;
+  responseEncoding?: 'base64' | 'identity';
 }
 
 export interface Spec<TSchema extends z.ZodTypeAny = any, TResult = any> {
