@@ -2,9 +2,13 @@ import { z } from 'zod';
 import { ServiceConfig, Spec } from '../types';
 import * as AuthModule from '../auth';
 import * as Transport from '../transport';
+import { FieldMaskTree } from '../utils/field-mask';
+import { calculateChecksum } from '../utils/checksum';
+import { QUERY_PARAMS } from '../constants';
 
 export class Service {
   private specs: Map<string, Spec<any, any>> = new Map();
+  public lastChecksums: Map<string, number> = new Map();
 
   constructor(public config: ServiceConfig) {}
 
@@ -14,6 +18,50 @@ export class Service {
 
   getSpec(name: string): Spec<any, any> | undefined {
     return this.specs.get(name);
+  }
+
+  private applyConfigToUrl(url: URL) {
+    if (this.config.hl) url.searchParams.append('hl', this.config.hl);
+    if (this.config.bl) url.searchParams.append('bl', this.config.bl);
+    if (this.config.f_sid) url.searchParams.append('f.sid', this.config.f_sid);
+    
+    if (this.config.fields && this.config.fields.length > 0) {
+      url.searchParams.append(QUERY_PARAMS.FIELDS[0], this.config.fields.join(','));
+    }
+    if (this.config.prettyPrint) {
+      url.searchParams.append(QUERY_PARAMS.PRETTY_PRINT[0], 'true');
+    }
+    if (this.config.errorFormat) {
+      url.searchParams.append(QUERY_PARAMS.ERROR_FORMAT[0], this.config.errorFormat);
+    }
+    if (this.config.alt) {
+      url.searchParams.append(QUERY_PARAMS.ALT[0], this.config.alt);
+    }
+  }
+
+  private processResultData<TResult>(specName: string, data: any): TResult {
+    let result = data;
+    
+    // Prune data via FieldMask Tree
+    if (this.config.fields && this.config.fields.length > 0) {
+      const tree = new FieldMaskTree(this.config.fields);
+      result = tree.prune(result);
+    }
+
+    // Canonical Content Hash
+    if (this.config.checksum) {
+      const checksum = calculateChecksum(result);
+      this.lastChecksums.set(specName, checksum);
+      // Attach non-enumerable checksum if possible
+      if (result && typeof result === 'object') {
+        Object.defineProperty(result, '__checksum', {
+          value: checksum,
+          enumerable: false
+        });
+      }
+    }
+
+    return result as TResult;
   }
 
   async execute<TResult = any>(name: string, data: any): Promise<TResult> {
@@ -45,9 +93,7 @@ export class Service {
     }
 
     const url = new URL(this.config.baseUrl);
-    if (this.config.hl) url.searchParams.append('hl', this.config.hl);
-    if (this.config.bl) url.searchParams.append('bl', this.config.bl);
-    if (this.config.f_sid) url.searchParams.append('f.sid', this.config.f_sid);
+    this.applyConfigToUrl(url);
 
     const response = await fetch(url.toString(), {
       method: 'POST',
@@ -67,7 +113,8 @@ export class Service {
       throw new Error(`No result found for rpcId: ${spec.rpcId}`);
     }
 
-    return spec.mapResult(result.payload);
+    const mappedResult = spec.mapResult(result.payload);
+    return this.processResultData<TResult>(name, mappedResult);
   }
 
   async *stream<TSchema extends z.ZodTypeAny = any, TResult = any>(name: string, data: any): AsyncIterable<TResult> {
@@ -99,9 +146,7 @@ export class Service {
     }
 
     const url = new URL(this.config.baseUrl);
-    if (this.config.hl) url.searchParams.append('hl', this.config.hl);
-    if (this.config.bl) url.searchParams.append('bl', this.config.bl);
-    if (this.config.f_sid) url.searchParams.append('f.sid', this.config.f_sid);
+    this.applyConfigToUrl(url);
 
     const response = await fetch(url.toString(), {
       method: 'POST',
@@ -124,7 +169,8 @@ export class Service {
       const results = decoder.decodeChunk(chunk);
       for (const result of results) {
         if (result.rpcId === spec.rpcId) {
-          yield spec.mapResult(result.payload);
+          const mappedResult = spec.mapResult(result.payload);
+          yield this.processResultData<TResult>(name, mappedResult);
         }
       }
     }

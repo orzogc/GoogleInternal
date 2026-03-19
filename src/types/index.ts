@@ -8,6 +8,7 @@ export interface ServiceConfig {
   at?: string;
   cookies?: string;
   origin?: string;
+  
   // New options
   maxRetries?: number;
   retryDelay?: number; // ms
@@ -15,6 +16,13 @@ export interface ServiceConfig {
   debug?: boolean;
   debugDumpRequest?: boolean;
   debugDumpPayload?: boolean;
+
+  // Google-Native Engine Options
+  fields?: string[];     // Field masks for pruning
+  checksum?: boolean;    // Return checksum with result
+  prettyPrint?: boolean; // Request formatted JSON
+  errorFormat?: string;  // e.g. $.xgafv
+  alt?: string;          // Output format
 }
 
 export interface Spec<TSchema extends z.ZodTypeAny = any, TResult = any> {

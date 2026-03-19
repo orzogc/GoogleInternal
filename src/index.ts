@@ -28,6 +28,10 @@ export class GoogleInternal {
 }
 
 export * from './types';
+export * from './constants';
 export { Service } from './registry/service';
 export { BatchBuilder } from './batch/builder';
 export { PartialBatchError } from './errors';
+export { FieldMaskTree } from './utils/field-mask';
+export { calculateChecksum, fnv1a32, stableStringify } from './utils/checksum';
+export { WKTRegistry, defaultRegistry } from './transport/registry';

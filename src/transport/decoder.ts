@@ -1,3 +1,5 @@
+import { defaultRegistry } from './registry';
+
 function recursiveUnescape(data: any, depth = 3): any {
   if (typeof data !== 'string' || depth <= 0) return data;
   try {
@@ -22,7 +24,8 @@ function extractWrbEnvelopes(data: any, results: { rpcId: string; payload: any; 
     const index = data[6];
     
     if (typeof rpcId === 'string' && typeof index === 'string') {
-      const payload = recursiveUnescape(rawPayload);
+      let payload = recursiveUnescape(rawPayload);
+      payload = defaultRegistry.transform(payload); // Automatically unwrap and parse WKTs
       results.push({ rpcId, payload, index });
     }
     return;
@@ -33,7 +36,7 @@ function extractWrbEnvelopes(data: any, results: { rpcId: string; payload: any; 
   }
 }
 
-const XSSI_PREFIXES = [")]}'\n\n", ")]}'\n", ")]}''"];
+const XSSI_PREFIXES = [ "))}'\n\n", "))}'\n", "))}''"];
 
 /**
  * Decodes a batchexecute response.
@@ -166,4 +169,3 @@ export class StreamingDecoder {
     return results;
   }
 }
-
